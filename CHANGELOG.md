@@ -1,3 +1,6 @@
+# 1.14.0-search (unofficial build on top of Bikram-Kumar's 1.14.0)
+* Added search to Android Auto: search button on the screen and voice commands ("Ok Google, play <song> on Harmony Music")
+
 # 1.12.2
 * Added wakelock support to keep screen awake while playing music (can be toggled from settings)
 * Enabled downloading in external storage for Android devices
