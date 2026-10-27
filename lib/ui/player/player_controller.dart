@@ -315,8 +315,18 @@ class PlayerController extends GetxController
     _audioHandler.customEvent.listen((event) {
       if (event['eventType'] == 'playFromMediaId') {
         _playViaAndroidAuto(event['songId'], event['libraryId']);
+      } else if (event['eventType'] == 'playFromSearch') {
+        _playSearchResultViaAndroidAuto(
+            List<MediaItem>.from(event['songs']), event['songId']);
       }
     });
+  }
+
+  /// Plays the Android Auto search results as a queue, starting at [songId].
+  void _playSearchResultViaAndroidAuto(List<MediaItem> songs, String songId) {
+    if (songs.isEmpty) return;
+    final index = songs.indexWhere((song) => song.id == songId);
+    playPlayListSong(songs, index < 0 ? 0 : index);
   }
 
   ///pushSongToPlaylist method clear previous song queue, plays the tapped song and push related
