@@ -17,6 +17,7 @@ import 'package:rxdart/rxdart.dart';
 import '/models/album.dart';
 import '../models/playlist.dart';
 import '/services/equalizer.dart';
+import '/services/music_service.dart';
 import '/services/stream_service.dart';
 import '/models/hm_streaming_data.dart';
 import '/ui/player/player_controller.dart';
@@ -40,6 +41,11 @@ Future<AudioHandler> initAudioService() async {
       androidNotificationChannelName: 'Harmony Music Notification',
       androidNotificationOngoing: true,
       androidStopForegroundOnPause: true,
+      // Tells Android Auto that this app supports search (search button and
+      // voice commands like "Ok Google, play ... on Harmony Music").
+      androidBrowsableRootExtras: {
+        'android.media.browse.SEARCH_SUPPORTED': true,
+      },
     ),
   );
 }
@@ -745,10 +751,42 @@ class MyAudioHandler extends BaseAudioHandler with GetxServiceMixin {
         .shareValue();
   }
 
+  /// Android Auto search (search button on the screen)
+  @override
+  Future<List<MediaItem>> search(String query,
+      [Map<String, dynamic>? extras]) {
+    return _mediaLibrary.search(query);
+  }
+
+  /// Android Auto / Google Assistant voice search
+  /// ("Ok Google, play <song> on Harmony Music").
+  @override
+  Future<void> playFromSearch(String query,
+      [Map<String, dynamic>? extras]) async {
+    final results = await _mediaLibrary.search(query);
+    if (results.isEmpty) return;
+    customEvent.add({
+      'eventType': 'playFromSearch',
+      'songs': _mediaLibrary.lastSearchResults,
+      'songId': results.first.id,
+    });
+  }
+
   // only for Android Auto
   @override
   Future<void> playFromMediaId(String mediaId,
       [Map<String, dynamic>? extras]) async {
+    // Song picked from the Android Auto search results
+    if (_mediaLibrary.isSearchResult(mediaId) &&
+        (extras == null ||
+            extras['libraryId'] == MediaLibrary.searchResultsId)) {
+      customEvent.add({
+        'eventType': 'playFromSearch',
+        'songs': _mediaLibrary.lastSearchResults,
+        'songId': mediaId,
+      });
+      return;
+    }
     customEvent.add({
       'eventType': 'playFromMediaId',
       'songId': mediaId,
@@ -878,6 +916,51 @@ class MediaLibrary {
   static const songsRootId = 'songs';
   static const favoritesRootId = "LIBFAV";
   static const playlistsRootId = 'playlists';
+  static const searchResultsId = 'SEARCH';
+
+  /// Full song items found by the latest Android Auto search, in result order.
+  /// They are kept so that picking a result can build the playback queue.
+  List<MediaItem> lastSearchResults = [];
+
+  bool isSearchResult(String songId) =>
+      lastSearchResults.any((song) => song.id == songId);
+
+  /// Searches songs on YouTube Music. Returns light items for the Android Auto
+  /// results screen and keeps the full items in [lastSearchResults].
+  Future<List<MediaItem>> search(String query) async {
+    final text = query.trim();
+    if (text.isEmpty) return [];
+    try {
+      final result = await Get.find<MusicServices>()
+          .search(text, filter: 'songs', limit: 20);
+      final songs = <MediaItem>[];
+      final seenIds = <String>{};
+      result.forEach((key, value) {
+        if (key == 'searchEndpoint' || key == 'params' || value is! List) {
+          return;
+        }
+        for (final song in value.whereType<MediaItem>()) {
+          if (seenIds.add(song.id)) songs.add(song);
+        }
+      });
+      lastSearchResults = songs.take(20).toList();
+      return lastSearchResults
+          .map((song) => MediaItem(
+                id: song.id,
+                title: song.title,
+                artist: song.artist,
+                album: song.album,
+                duration: song.duration,
+                artUri: song.artUri,
+                extras: {"libraryId": searchResultsId},
+                playable: true,
+              ))
+          .toList();
+    } catch (e) {
+      printERROR("Android Auto search failed: $e");
+      return [];
+    }
+  }
 
   Future<List<MediaItem>> getByRootId(String id) async {
     switch (id) {
