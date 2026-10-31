@@ -944,6 +944,9 @@ class MediaLibrary {
         }
       });
       lastSearchResults = songs.take(20).toList();
+      if (lastSearchResults.isEmpty) {
+        return [_searchInfoItem('No results for "$text" (keys: ${result.keys.join(", ")})')];
+      }
       return lastSearchResults
           .map((song) => MediaItem(
                 id: song.id,
@@ -958,9 +961,17 @@ class MediaLibrary {
           .toList();
     } catch (e) {
       printERROR("Android Auto search failed: $e");
-      return [];
+      return [_searchInfoItem('Search error: $e')];
     }
   }
+
+  /// Non-playable item that shows a message in the Android Auto results list.
+  MediaItem _searchInfoItem(String message) => MediaItem(
+        id: 'SEARCH_INFO',
+        title: message,
+        playable: false,
+        extras: {"libraryId": searchResultsId},
+      );
 
   Future<List<MediaItem>> getByRootId(String id) async {
     switch (id) {
